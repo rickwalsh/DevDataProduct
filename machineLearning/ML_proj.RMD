@@ -1,0 +1,198 @@
+
+Exercise Prediction Model
+========================================================
+Rick Walsh 8/20/2014
+
+### Executive Summary
+
+This project uses a Human Activity Recognition data set provided by 
+Groupware@les.  The data set measures how well exercises are performed
+using personal activity monitors.  The goal of this analysis is to 
+analyze the data set and determine a model that will predict the effectiveness
+of each attempted exercise.  The final model is to be executed on a test 
+data set to generate predictions for each test case.
+
+The analysis will demonstrate the building and execution of a model that 
+correctly determined the effectiveness of all 20 test cases.
+
+### Building the Model / Use of Cross-Validation
+
+There are a number of columns in the data set that include DIV/0 and NA 
+data values.  These will not be useful to model, so as a first step, the
+code redefines 'trainSet' as the columns that have what appears to be useful
+data to review.  The list of columns starting with "c(7:11,37:49"" etc 
+(see below in the code) are the list that will be used.
+
+Other data preparating includes setting a seed for consistency, and making the
+'classe' variable a factor type.
+
+```{r}
+library(knitr)
+library(caret)
+
+# load the training data
+trainSet<-read.csv('pml-training.csv')
+
+# eliminate the columns that are blank, ave DIV/0 issues, or NA values
+trainSet <- trainSet[,c(7:11,37:49,60:68,84:86,113:124,151:160)]
+
+# set classe as factor variable
+trainSet$classe <-factor(trainSet$classe)
+set.seed(1234)
+```
+
+Next the training data will be partitioned with 10% going to a train set,
+for evaluation. The idea of this round is to find columns that are most
+likely to make a good decision on the classe data value. Given the lengthy
+execution time of the training step, a 10% sample was used, rather than
+a larger percentage.
+
+The code will train on the first 10% data set using random forest cross
+validation, then test on the other 90%.  The random forest technique
+will perform cross validation results that will be reviewed below.
+
+```{r }
+# sample 10% of the cases to create test set to determine the 
+# most useful columns for the model
+trainIndex = createDataPartition(trainSet$classe,p=0.1,list=FALSE)
+training = trainSet[trainIndex,]
+testing = trainSet[-trainIndex,]
+```
+
+Now, use the train() function with Random Forest sampling to generate a model.
+When the model is complete, use varImp to determine the columns most relevant
+to the model that was determined via train().
+
+Display the model, and the most relevant columns.
+
+```{r}
+# fit the model using train() and random forest on training set
+modFit<-train( classe ~., data=training, method="rf", prox=FALSE)
+# The model produced is Figure 1
+modFit$finalModel 
+
+# now see which variables were most important
+varImp(modFit , scale = FALSE )
+
+# now run for testing set
+# This is Figure 2
+pred <- predict (modFit, testing)
+testing$classePred <- pred==testing$classe
+table(pred,testing$classe)
+```
+
+The model generates a less than 4% OOB error rate as shown above in 
+the table.
+
+### Refine the Model
+
+Use the 5 columns determined as most important to create a new model.  Use 
+only those columns in the model.  The columns selected are shown in the 
+code below. Create new training and testing data sets from the original 
+training set, with 40% for training and 60% for testing.
+
+```{r}
+# let's create a new model, using only those variables
+# first get the right columns
+trSet <- trainSet[,c(
+  'num_window',
+  'roll_belt',
+  'pitch_forearm',
+  'yaw_belt',
+  'magnet_dumbbell_z',
+  'classe'
+  )]
+
+# with fewer columns, we can reasonably run the random forest
+# again, and perhaps get better results
+# so create 40% sample for training, leaving 60% for testing
+trainIndex = createDataPartition(trSet$classe,p=0.4,list=FALSE)
+training = trSet[trainIndex,]
+testing = trSet[-trainIndex,]
+
+# fit again using random forest, now with fewer columns
+modFit2<-train( classe ~.,data=training, method="rf",prox=FALSE)
+
+# The model produced is Figure 3
+# it shows a very low out of sample error prediction
+modFit2$finalModel 
+```
+
+### Out of Sample Error Discussion
+
+At this point, we have a more precise model (called modFit2) from the train()
+function as invoked above created from using a smaller number of more relevant 
+columns.  Since we used random forest, there is no over-fitting.
+
+Next, let's review the results of the new model on the 40% training set.
+We will use predict(), set up a boolean classePred flag, track whether it's
+a valid prediction or not, then display a table that shows the accuracy of 
+the model on the 40% training set.
+
+```{r}
+# now run for final training set
+pred <- predict (modFit2 , training)
+training$classePred <- pred==training$classe
+
+# The table produced is Figure 4
+table(pred, training$classe)
+```
+
+### Errors Found from the Test Set
+
+From the results above, the new model shows an exact match on the training
+set, which is not surprising since the training set was used in its
+development.  It's error rate is predicted as 0.2%.
+
+Let's run the model on the test part of the training set (the other 60% of
+cases not used in the model creation) and find the out of sample errors.
+
+Out of sample errors are defined as the results from the testing set that 
+are not consistent with the predicted values.  The cross validation 
+performed estimates the error appropriately.
+
+The code below runs the model on the 60% testing set.  It creates
+a very small small number of out of sample errors as shown in the table. 
+
+The total number of errors per the table is 38 out of 11772 entries
+in the testing set, which is a 0.3%  rate.  This result is consistent 
+with the 0.2% prediction.
+
+```{r}
+# then run for final testing set
+pred <- predict (modFit2 , testing)
+testing$classePred <- pred==testing$classe
+
+# The table produced is Figure 5
+table(pred, testing$classe)
+```
+ 
+### Prediction Model for the 20 Test Cases
+
+Since the model looks very accurate, next load the 'real' testing
+set and execute the model.  The Estimated Error is consistent with 
+the prediction.
+
+The list of answers are provided below.  Per the automated grading,
+all answers were correct, and all points were earned for the assignment.
+
+It appears that the model created was quite accurate, as expected
+from the predicted results.
+
+```{r}
+testSet<-read.csv('pml-testing.csv')
+tstSet <- testSet[,c(
+  'num_window',
+  'roll_belt',
+  'pitch_forearm',
+  'yaw_belt',
+  'magnet_dumbbell_z')]
+
+tstSet$classe<-'X'
+# set classe as factor variable
+tstSet$classe <-factor(tstSet$classe)
+
+pred <- predict (modFit2 , tstSet)
+as.character(pred)
+```
+
